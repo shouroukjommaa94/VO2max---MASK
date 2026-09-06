@@ -27,7 +27,7 @@ Allows for BLE or WiFi or ANT+ connections from any other sensor
 - power meter
 - rowing stroke rate
   
-## Versions??????
+## Versions
 - V1 - Original version that works, can be found via the Instructable link above.
 - V1.1 - Original version + CO2 and updated sensors due to availability
 - V2 - Upgraded version with CO₂, ambient temperature and pressure measurements.
@@ -96,7 +96,7 @@ Source code for Arduino under "VO2Max" - Arduino board settings to use for TTGO 
     Partition Scheme: Default 4MB with spiffs (1.2MB APP/1.5 SPIFFS)
     Core Debug Level: None`
 
-## Useful Images
+## Useful Images????
 
 <figure>
     <img src="/images/arduino v1.1/Components.jpg" width="640" height="480"
