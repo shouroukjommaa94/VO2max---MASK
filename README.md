@@ -1,5 +1,5 @@
 # VO2 Max Mask v 1.1
-Project to build an affordable and adaptable VO2 Max mask. Your VO2 Max is a measure of how much oxygen your body can absorb and use during exercise. Read more about it here￼.
+Project to build an affordable and adaptable VO2 Max mask. Your VO2 Max is a measure of how much oxygen your body can absorb and use during exercise. Read more about it here https://www.healthline.com/health/vo2-max#benefits.
 
 Original idea and detailed build instructions can be found on Instructable￼. Other designs include a UC Davis Med Center project￼ and a commercial version costing ~US$6,000￼.
 
