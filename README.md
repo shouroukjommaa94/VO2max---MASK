@@ -30,12 +30,13 @@ Allows for BLE or WiFi or ANT+ connections from any other sensor
 ## Versions??????
 - V1 - Original version that works, can be found via the Instructable link above.
 - V1.1 - Original version + CO2 and updated sensors due to availability
-- V2 - Upgraded version by Urissel & Ivor, includes the CO2 & ambient temp/pressure to adapt to different elevation & temperatures.
-- V3 - Proposed by Mahmoud, this is the T version.  Currently abandoned due to issues with getting correct sensor readings.
-- V4 - Proposed by Stefan, affectionately called "The Snork".  Latest version.
+- V2 - Upgraded version with CO₂, ambient temperature and pressure measurements.
+- V3 - Proposed this is the T version.  Currently abandoned due to issues with getting correct sensor readings.
+- V4 - Proposed affectionately called "The Snork".  Latest version.
+- - **Group 2 (2026)** – Rebuilding and testing the V1.1 system. If time allows, the electronic enclosure may be redesigned to make it smaller and lighter.
 
 ## Current Status
-Current Status (December 9th 2025)
+Current Status (Augusti - Okt 2026)
 The mask is now fully assembled based on the bill of materials under the EU section in the BOM file.
 The Arduino v1.1 code has been updated with the latest sensor values.
 Recent work includes integrating a LiPo battery and an on/off switch, making the unit fully portable without needing USB power.
