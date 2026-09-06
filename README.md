@@ -27,7 +27,7 @@ Allows for BLE or WiFi or ANT+ connections from any other sensor
 - power meter
 - rowing stroke rate
   
-## Versions
+## Versions??????
 - V1 - Original version that works, can be found via the Instructable link above.
 - V1.1 - Original version + CO2 and updated sensors due to availability
 - V2 - Upgraded version by Urissel & Ivor, includes the CO2 & ambient temp/pressure to adapt to different elevation & temperatures.
@@ -39,7 +39,7 @@ Current Status (December 9th 2025)
 The mask is now fully assembled based on the bill of materials under the EU section in the BOM file.
 The Arduino v1.1 code has been updated with the latest sensor values.
 Recent work includes integrating a LiPo battery and an on/off switch, making the unit fully portable without needing USB power.
-Future recommendations can be found in the
+Future recommendations can be found in the?????
 [Final report](https://github.com/Elin310/VO2max/papers/VO2MaxMaskFINAL.pdf)
 
 ## Hardware Upgrade (December 2025): Battery & On/Off Switch
