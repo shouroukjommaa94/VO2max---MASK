@@ -1,13 +1,13 @@
 # VO2 Max Mask 
 This project aims to rebuild and test an affordable and adaptable VO₂max mask. VO₂max measures the maximum amount of oxygen the body can absorb and use during exercise.
 
-The project is based on the previous [VO₂max Mask project] (https://github.com/Elin310/VO2max), which incorporates CO₂ measurement and other sensor improvements.
+The project is based on the previous [VO₂max Mask project](https://github.com/Elin310/VO2max), which incorporates CO₂ measurement and other sensor improvements.
 
 Our primary goal is to rebuild the existing system, connect the sensors correctly and evaluate its functionality. If time allows, we will investigate possibilities for making the electronic enclosure smaller and lighter.
 
-The original idea and detailed build instructions are available on [Instructables](https://www.instructables.com/Accurate-VO2-Max-for-Zwift-and-Strava/). Other related designs include a [UC Davis Medical Center project (https://faculty.engineering.ucdavis.edu/knoesen/wp-content/uploads/sites/119/2016/12/OOCOO_WirelessHealthSubmission_Final.pdf) and a [commercial system costing approximately US$6,000](https://vo2master.com/).
+The original idea and detailed build instructions are available on [Instructables](https://www.instructables.com/Accurate-VO2-Max-for-Zwift-and-Strava/). Other related designs include a [VO₂max Mask project](https://github.com/Elin310/VO2max) and a [commercial system costing approximately US$6,000](https://vo2master.com/).
 
-This fork of Meteoscientific incorporates the CO2 enhancements from Ulrich Rissel. The intent with this repo is to make a prototype that can be used by Sports technology at KTH and be adble to make future improvements.
+This fork of [Meteoscientific](https://github.com/meteoscientific/VO2max) incorporates the CO2 enhancements from Ulrich Rissel. The intent with this repo is to make a prototype that can be used by Sports technology at KTH and be adble to make future improvements.
 
 ## Design Constraints
 Less than $200 for all parts and printing.
