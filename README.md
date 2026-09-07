@@ -68,7 +68,7 @@ The LiPo battery (E503450, 1000 mAh) is charged directly through the USB-C port 
 ## Order Sensors, board, and assorted fasteners.
 Check the [BOM](https://github.com/Elin310/VO2max/blob/main/BOM.md) for all the various parts to order, they can take a week or two to come in.
 
-## Print 3D Parts
+## Print 3D Parts?????
 Print out the 3D parts using PLA.
 
 The 3D parts used is under the map 3D print files under arduino v1.1 map. The buttons are not a real match to the case and the on/off switch for the battery was the wrong one and need to be adjusted.
