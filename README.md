@@ -65,6 +65,12 @@ The LiPo battery (E503450, 1000 mAh) is charged directly through the USB-C port 
 
 ### Steps to Build & Use
 
+## Web Interface
+
+For real-time temperature monitoring, use the web interface available here:
+
+[Open the Temperature Web Interface](docs/index.html)
+
 ## Order Sensors, board, and assorted fasteners.
 Check the [BOM](https://github.com/Elin310/VO2max/blob/main/BOM.md) for all the various parts to order, they can take a week or two to come in.
 
