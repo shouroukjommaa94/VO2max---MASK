@@ -36,7 +36,7 @@ Allows for BLE or WiFi or ANT+ connections from any other sensor
 - - **Group 2 (2026)** – Rebuilding and testing the V1.1 system. If time allows, the electronic enclosure may be redesigned to make it smaller and lighter.
 
 ## Current Status
-Current Status (Augusti - Okt 2026)
+Current Status (August–October 2026)
 The mask is now fully assembled based on the bill of materials under the EU section in the BOM file.
 The Arduino v1.1 code has been updated with the latest sensor values.
 Recent work includes integrating a LiPo battery and an on/off switch, making the unit fully portable without needing USB power.
