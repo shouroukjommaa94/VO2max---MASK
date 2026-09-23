@@ -88,7 +88,7 @@ Make sure to fit the sensor with the tubings, or adjust the 3D print file to ref
 Source code for Arduino under "VO2Max" - Arduino board settings to use for TTGO T-Display:
 
     Board: ESP32 Dev Module
-    Upload Speed: 921600
+    Upload Speed: 115200
     CPU Frequency: 240Mhz (WiFi/BT)
     Flash Frequency: 80Mhz
     Flash Mode: QIO
