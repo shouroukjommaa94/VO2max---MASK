@@ -1,0 +1,435 @@
+## Temperature Web Interface
+
+A browser-based interface is available for reading temperature
+data directly from the ESP32.
+
+The interface displays the current temperature and plots the
+temperature signal over time.
+
+### Open the interface
+
+[Open VO2 Max Mask Temperature Monitor](https://shouroukjommaa94.github.io/VO2max---MASK/)
+
+### How to use
+
+1. Connect the ESP32 using USB-C.
+2. Close Arduino Serial Monitor.
+3. Öppna VS Code
+Skapa en mapp, t.ex. VO2-mask
+Skapa en ny fil: index.html[<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>VO2 Mask Temperature</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 40px auto;
+            padding: 20px;
+        }
+
+        button {
+            padding: 12px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        #temperature {
+            font-size: 30px;
+            font-weight: bold;
+        }
+
+        canvas {
+            border: 1px solid black;
+            margin-top: 20px;
+            width: 100%;
+            max-width: 900px;
+        }
+    </style>
+</head>
+
+
+<body>
+
+    <h1>VO2 Mask</h1>
+
+    <button id="connectButton">
+        Connect ESP32
+    </button>
+
+    <h2>
+        Temperature:
+        <span id="temperature">--</span> °C
+    </h2>
+
+    <p id="status">
+        Not connected
+    </p>
+
+    <h2>Temperature over time</h2>
+
+    <canvas
+        id="temperatureGraph"
+        width="900"
+        height="400">
+    </canvas>
+
+
+<script>
+
+const connectButton =
+    document.getElementById("connectButton");
+
+const temperatureDisplay =
+    document.getElementById("temperature");
+
+const statusDisplay =
+    document.getElementById("status");
+
+const canvas =
+    document.getElementById("temperatureGraph");
+
+const ctx =
+    canvas.getContext("2d");
+
+
+let measurements = [];
+
+let startTime = null;
+
+
+// -------------------------
+// DRAW GRAPH
+// -------------------------
+
+function drawGraph() {
+
+    ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+    if (measurements.length < 2) {
+        return;
+    }
+
+    const marginLeft = 60;
+    const marginRight = 20;
+    const marginTop = 20;
+    const marginBottom = 50;
+
+    const graphWidth =
+        canvas.width -
+        marginLeft -
+        marginRight;
+
+    const graphHeight =
+        canvas.height -
+        marginTop -
+        marginBottom;
+
+
+    const temperatures =
+        measurements.map(
+            m => m.temperature
+        );
+
+
+    let minTemp =
+        Math.min(...temperatures);
+
+    let maxTemp =
+        Math.max(...temperatures);
+
+
+    if (maxTemp - minTemp < 0.5) {
+
+        minTemp -= 0.25;
+        maxTemp += 0.25;
+    }
+
+
+    const maxTime =
+        measurements[
+            measurements.length - 1
+        ].time;
+
+
+    // Axes
+    ctx.beginPath();
+
+    ctx.moveTo(
+        marginLeft,
+        marginTop
+    );
+
+    ctx.lineTo(
+        marginLeft,
+        canvas.height - marginBottom
+    );
+
+    ctx.lineTo(
+        canvas.width - marginRight,
+        canvas.height - marginBottom
+    );
+
+    ctx.stroke();
+
+
+    // Labels
+    ctx.fillText(
+        "Temperature (°C)",
+        5,
+        15
+    );
+
+    ctx.fillText(
+        "Time (s)",
+        canvas.width / 2,
+        canvas.height - 10
+    );
+
+    ctx.fillText(
+        maxTemp.toFixed(2),
+        10,
+        marginTop + 5
+    );
+
+    ctx.fillText(
+        minTemp.toFixed(2),
+        10,
+        canvas.height - marginBottom
+    );
+
+
+    // Temperature curve
+    ctx.beginPath();
+
+
+    measurements.forEach(
+        (measurement, index) => {
+
+            const x =
+                marginLeft +
+                (
+                    measurement.time /
+                    Math.max(maxTime, 1)
+                ) *
+                graphWidth;
+
+
+            const y =
+                marginTop +
+                (
+                    (
+                        maxTemp -
+                        measurement.temperature
+                    ) /
+                    (
+                        maxTemp -
+                        minTemp
+                    )
+                ) *
+                graphHeight;
+
+
+            if (index === 0) {
+
+                ctx.moveTo(x, y);
+
+            } else {
+
+                ctx.lineTo(x, y);
+            }
+
+        }
+    );
+
+
+    ctx.stroke();
+}
+
+
+// -------------------------
+// CONNECT TO ESP32
+// -------------------------
+
+connectButton.addEventListener(
+    "click",
+    async () => {
+
+        try {
+
+            const port =
+                await navigator.serial.requestPort();
+
+
+            await port.open({
+                baudRate: 115200
+            });
+
+
+            await port.setSignals({
+                dataTerminalReady: false,
+                requestToSend: false
+            });
+
+
+            statusDisplay.textContent =
+                "ESP32 connected";
+
+
+            const reader =
+                port.readable.getReader();
+
+
+            const decoder =
+                new TextDecoder();
+
+
+            let buffer = "";
+
+
+            while (true) {
+
+                const { value, done } =
+                    await reader.read();
+
+
+                if (done) {
+                    break;
+                }
+
+
+                const text =
+                    decoder.decode(
+                        value,
+                        {
+                            stream: true
+                        }
+                    );
+
+
+                buffer += text;
+
+
+                const lines =
+                    buffer.split(/\r?\n/);
+
+
+                buffer =
+                    lines.pop();
+
+
+                for (const line of lines) {
+
+
+                    // ESP32 sends:
+                    // CO2 (%): -1.071 | Temperatur (C): 22.41
+
+                    const match =
+                        line.match(
+                            /Temperatur\s*\(C\):\s*(-?\d+(?:\.\d+)?)/
+                        );
+
+
+                    if (match) {
+
+                        const temp =
+                            parseFloat(
+                                match[1]
+                            );
+
+
+                        // Show current temperature
+                        temperatureDisplay.textContent =
+                            temp.toFixed(2);
+
+
+                        // Start time
+                        if (startTime === null) {
+
+                            startTime =
+                                Date.now();
+                        }
+
+
+                        // Calculate elapsed time
+                        const elapsedTime =
+                            (
+                                Date.now() -
+                                startTime
+                            ) / 1000;
+
+
+                        // Save measurement
+                        measurements.push({
+
+                            time:
+                                elapsedTime,
+
+                            temperature:
+                                temp
+
+                        });
+
+
+                        // Maximum 300 points
+                        if (
+                            measurements.length >
+                            300
+                        ) {
+
+                            measurements.shift();
+                        }
+
+
+                        // Update graph
+                        drawGraph();
+
+
+                        console.log(
+                            "Time:",
+                            elapsedTime.toFixed(1),
+                            "Temperature:",
+                            temp
+                        );
+                    }
+                }
+            }
+
+
+        } catch (error) {
+
+            statusDisplay.textContent =
+                "Connection failed: " +
+                error.message;
+
+            console.error(error);
+        }
+
+    }
+);
+
+</script>
+
+</body>
+
+</html>]
+Klistra in koden nedan
+Spara med Ctrl + S
+Högerklicka på index.html → Open with Live Server
+Sidan öppnas i Chrome/Edge
+Klicka Connect ESP32 → välj COM-porten
+4. Open the web interface using Google Chrome or Microsoft Edge.
+5. Click **Connect ESP32**.
+6. Select the ESP32 USB serial port.
+7. Temperature measurements will be displayed and plotted over time.
+
+The temperature signal can later be used to identify breathing
+cycles and calculate respiratory frequency.
