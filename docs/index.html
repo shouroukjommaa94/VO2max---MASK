@@ -1,33 +1,15 @@
-## Temperature Web Interface
-
-A browser-based interface is available for reading temperature
-data directly from the ESP32.
-
-The interface displays the current temperature and plots the
-temperature signal over time.
-
-### Open the interface
-
-[Open VO2 Max Mask Temperature Monitor](https://shouroukjommaa94.github.io/VO2max---MASK/)
-
-### How to use
-
-1. Connect the ESP32 using USB-C.
-2. Close Arduino Serial Monitor.
-3. Öppna VS Code
-Skapa en mapp, t.ex. VO2-mask
-Skapa en ny fil: index.html[<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="UTF-8">
-    <title>VO2 Mask Temperature</title>
+    <title>VO2 Mask Bluetooth</title>
 
     <style>
         body {
             font-family: Arial, sans-serif;
             max-width: 1000px;
-            margin: 40px auto;
+            margin: 30px auto;
             padding: 20px;
         }
 
@@ -37,75 +19,777 @@ Skapa en ny fil: index.html[<!DOCTYPE html>
             cursor: pointer;
         }
 
-        #temperature {
-            font-size: 30px;
+        .value {
             font-weight: bold;
         }
 
         canvas {
             border: 1px solid black;
-            margin-top: 20px;
             width: 100%;
             max-width: 900px;
+            margin-top: 20px;
         }
     </style>
 </head>
 
-
 <body>
 
-    <h1>VO2 Mask</h1>
+<h1>VO2 Mask</h1>
 
-    <button id="connectButton">
-        Connect ESP32
-    </button>
+<button id="connectButton">
+    Connect Bluetooth
+</button>
 
-    <h2>
-        Temperature:
-        <span id="temperature">--</span> °C
-    </h2>
-
-    <p id="status">
+<p>
+    Status:
+    <span id="status" class="value">
         Not connected
-    </p>
+    </span>
+</p>
 
-    <h2>Temperature over time</h2>
+<h2>Sensor values</h2>
 
-    <canvas
-        id="temperatureGraph"
-        width="900"
-        height="400">
-    </canvas>
+<p>
+    Temperature:
+    <span id="temperature" class="value">--</span> °C
+</p>
+
+<p>
+    CO₂:
+    <span id="co2" class="value">--</span> %
+</p>
+
+<h2>Breathing analysis</h2>
+
+<p>
+    Peaks:
+    <span id="peakCount" class="value">0</span>
+</p>
+
+<p>
+    Valleys:
+    <span id="valleyCount" class="value">0</span>
+</p>
+
+<p>
+    Respiratory frequency:
+    <span id="respiratoryRate" class="value">--</span>
+    breaths/min
+</p>
+
+<h2>Temperature over time</h2>
+
+<canvas
+    id="temperatureGraph"
+    width="900"
+    height="400">
+</canvas>
+
+<h2>CO₂ over time</h2>
+
+<canvas
+    id="co2Graph"
+    width="900"
+    height="400">
+</canvas>
 
 
 <script>
 
+// ====================================
+// UUID - SAME AS ARDUINO CODE
+// ====================================
+
+const SERVICE_UUID =
+    "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+
+const CHARACTERISTIC_UUID =
+    "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+
+
+// ====================================
+// HTML ELEMENTS
+// ====================================
+
 const connectButton =
     document.getElementById("connectButton");
-
-const temperatureDisplay =
-    document.getElementById("temperature");
 
 const statusDisplay =
     document.getElementById("status");
 
-const canvas =
+const temperatureDisplay =
+    document.getElementById("temperature");
+
+const co2Display =
+    document.getElementById("co2");
+
+const peakCountDisplay =
+    document.getElementById("peakCount");
+
+const valleyCountDisplay =
+    document.getElementById("valleyCount");
+
+const respiratoryRateDisplay =
+    document.getElementById("respiratoryRate");
+
+
+// ====================================
+// CANVAS
+// ====================================
+
+const temperatureCanvas =
     document.getElementById("temperatureGraph");
 
-const ctx =
-    canvas.getContext("2d");
+const temperatureCtx =
+    temperatureCanvas.getContext("2d");
 
+const co2Canvas =
+    document.getElementById("co2Graph");
+
+const co2Ctx =
+    co2Canvas.getContext("2d");
+
+
+// ====================================
+// DATA
+// ====================================
 
 let measurements = [];
 
+let smoothedTemperatures = [];
+
+let detectedPeaks = [];
+
+let detectedValleys = [];
+
 let startTime = null;
 
+let bluetoothBuffer = "";
 
-// -------------------------
-// DRAW GRAPH
-// -------------------------
 
-function drawGraph() {
+// ====================================
+// BREATHING SETTINGS
+// ====================================
+
+// Lower = more sensitive
+const SMOOTHING_WINDOW = 3;
+
+const MIN_TEMP_CHANGE = 0.03;
+
+const MIN_BREATH_INTERVAL = 1.2;
+
+const MIN_VALLEY_INTERVAL = 1.2;
+
+
+// ====================================
+// CONNECT BLUETOOTH
+// ====================================
+
+connectButton.addEventListener(
+    "click",
+    async () => {
+
+        try {
+
+            if (!navigator.bluetooth) {
+
+                statusDisplay.textContent =
+                    "Web Bluetooth not supported";
+
+                return;
+            }
+
+            statusDisplay.textContent =
+                "Searching...";
+
+
+            const device =
+                await navigator.bluetooth.requestDevice({
+
+                    acceptAllDevices: true,
+
+                    optionalServices: [
+                        SERVICE_UUID
+                    ]
+                });
+
+
+            statusDisplay.textContent =
+                "Connecting...";
+
+
+            const server =
+                await device.gatt.connect();
+
+
+            const service =
+                await server.getPrimaryService(
+                    SERVICE_UUID
+                );
+
+
+            const characteristic =
+                await service.getCharacteristic(
+                    CHARACTERISTIC_UUID
+                );
+
+
+            characteristic.addEventListener(
+                "characteristicvaluechanged",
+                receiveBluetoothData
+            );
+
+
+            await characteristic.startNotifications();
+
+
+            statusDisplay.textContent =
+                "Bluetooth connected";
+
+
+            device.addEventListener(
+                "gattserverdisconnected",
+                () => {
+
+                    statusDisplay.textContent =
+                        "Bluetooth disconnected";
+                }
+            );
+
+        }
+
+        catch (error) {
+
+            statusDisplay.textContent =
+                "Connection failed: " +
+                error.message;
+
+            console.error(error);
+        }
+    }
+);
+
+
+// ====================================
+// RECEIVE BLUETOOTH DATA
+// ====================================
+
+function receiveBluetoothData(event) {
+
+    const decoder =
+        new TextDecoder();
+
+
+    const text =
+        decoder.decode(
+            event.target.value
+        );
+
+
+    bluetoothBuffer += text;
+
+
+    const lines =
+        bluetoothBuffer.split("\n");
+
+
+    bluetoothBuffer =
+        lines.pop();
+
+
+    for (const line of lines) {
+
+        processSensorData(
+            line.trim()
+        );
+    }
+}
+
+
+// ====================================
+// PROCESS DATA
+//
+// Example:
+// 23.41,-1.978
+// ====================================
+
+function processSensorData(line) {
+
+    if (line.length === 0) {
+        return;
+    }
+
+
+    const values =
+        line.split(",");
+
+
+    if (values.length < 2) {
+        return;
+    }
+
+
+    const temperature =
+        parseFloat(values[0]);
+
+    const co2 =
+        parseFloat(values[1]);
+
+
+    if (
+        isNaN(temperature) ||
+        isNaN(co2)
+    ) {
+
+        return;
+    }
+
+
+    temperatureDisplay.textContent =
+        temperature.toFixed(2);
+
+
+    co2Display.textContent =
+        co2.toFixed(3);
+
+
+    if (startTime === null) {
+
+        startTime =
+            Date.now();
+    }
+
+
+    const elapsedTime =
+        (
+            Date.now() -
+            startTime
+        ) / 1000;
+
+
+    measurements.push({
+
+        time:
+            elapsedTime,
+
+        temperature:
+            temperature,
+
+        co2:
+            co2
+    });
+
+
+    if (measurements.length > 500) {
+
+        measurements.shift();
+    }
+
+
+    const smoothedTemp =
+        calculateSmoothedTemperature();
+
+
+    smoothedTemperatures.push({
+
+        time:
+            elapsedTime,
+
+        temperature:
+            smoothedTemp
+    });
+
+
+    if (smoothedTemperatures.length > 500) {
+
+        smoothedTemperatures.shift();
+    }
+
+
+    detectBreathing();
+
+
+    drawTemperatureGraph();
+
+    drawCO2Graph();
+
+
+    console.log(
+        "Temperature:",
+        temperature,
+        "CO2:",
+        co2
+    );
+}
+
+
+// ====================================
+// SMOOTH TEMPERATURE
+// ====================================
+
+function calculateSmoothedTemperature() {
+
+    const count =
+        Math.min(
+            SMOOTHING_WINDOW,
+            measurements.length
+        );
+
+
+    let total = 0;
+
+
+    for (
+        let i =
+            measurements.length - count;
+
+        i <
+            measurements.length;
+
+        i++
+    ) {
+
+        total +=
+            measurements[i].temperature;
+    }
+
+
+    return total / count;
+}
+
+
+// ====================================
+// DETECT PEAKS AND VALLEYS
+// ====================================
+
+function detectBreathing() {
+
+    if (
+        smoothedTemperatures.length < 3
+    ) {
+
+        return;
+    }
+
+
+    const length =
+        smoothedTemperatures.length;
+
+
+    const previous =
+        smoothedTemperatures[
+            length - 3
+        ];
+
+
+    const middle =
+        smoothedTemperatures[
+            length - 2
+        ];
+
+
+    const current =
+        smoothedTemperatures[
+            length - 1
+        ];
+
+
+    // --------------------------------
+    // PEAK
+    // --------------------------------
+
+    const isPeak =
+
+        middle.temperature >=
+        previous.temperature
+
+        &&
+
+        middle.temperature >
+        current.temperature;
+
+
+    if (isPeak) {
+
+        const recent =
+            smoothedTemperatures.filter(
+
+                point =>
+
+                    point.time >=
+                    middle.time - 5
+
+                    &&
+
+                    point.time <=
+                    middle.time
+            );
+
+
+        const recentMin =
+            Math.min(
+                ...recent.map(
+                    point =>
+                        point.temperature
+                )
+            );
+
+
+        const change =
+            middle.temperature -
+            recentMin;
+
+
+        const lastPeakTime =
+
+            detectedPeaks.length > 0
+
+            ?
+
+            detectedPeaks[
+                detectedPeaks.length - 1
+            ].time
+
+            :
+
+            -Infinity;
+
+
+        if (
+
+            change >=
+            MIN_TEMP_CHANGE
+
+            &&
+
+            middle.time -
+            lastPeakTime >=
+            MIN_BREATH_INTERVAL
+        ) {
+
+            detectedPeaks.push({
+
+                time:
+                    middle.time,
+
+                temperature:
+                    middle.temperature
+            });
+
+
+            peakCountDisplay.textContent =
+                detectedPeaks.length;
+
+
+            calculateRespiratoryRate();
+        }
+    }
+
+
+    // --------------------------------
+    // VALLEY
+    // --------------------------------
+
+    const isValley =
+
+        middle.temperature <=
+        previous.temperature
+
+        &&
+
+        middle.temperature <
+        current.temperature;
+
+
+    if (isValley) {
+
+        const recent =
+            smoothedTemperatures.filter(
+
+                point =>
+
+                    point.time >=
+                    middle.time - 5
+
+                    &&
+
+                    point.time <=
+                    middle.time
+            );
+
+
+        const recentMax =
+            Math.max(
+                ...recent.map(
+                    point =>
+                        point.temperature
+                )
+            );
+
+
+        const change =
+            recentMax -
+            middle.temperature;
+
+
+        const lastValleyTime =
+
+            detectedValleys.length > 0
+
+            ?
+
+            detectedValleys[
+                detectedValleys.length - 1
+            ].time
+
+            :
+
+            -Infinity;
+
+
+        if (
+
+            change >=
+            MIN_TEMP_CHANGE
+
+            &&
+
+            middle.time -
+            lastValleyTime >=
+            MIN_VALLEY_INTERVAL
+        ) {
+
+            detectedValleys.push({
+
+                time:
+                    middle.time,
+
+                temperature:
+                    middle.temperature
+            });
+
+
+            valleyCountDisplay.textContent =
+                detectedValleys.length;
+        }
+    }
+}
+
+
+// ====================================
+// RESPIRATORY FREQUENCY
+// ====================================
+
+function calculateRespiratoryRate() {
+
+    if (
+        detectedPeaks.length < 2
+    ) {
+
+        respiratoryRateDisplay.textContent =
+            "--";
+
+        return;
+    }
+
+
+    const recentPeaks =
+        detectedPeaks.slice(-6);
+
+
+    let totalInterval = 0;
+
+    let intervals = 0;
+
+
+    for (
+        let i = 1;
+        i < recentPeaks.length;
+        i++
+    ) {
+
+        totalInterval +=
+
+            recentPeaks[i].time -
+
+            recentPeaks[i - 1].time;
+
+
+        intervals++;
+    }
+
+
+    const averageInterval =
+
+        totalInterval /
+        intervals;
+
+
+    const respiratoryRate =
+
+        60 /
+        averageInterval;
+
+
+    respiratoryRateDisplay.textContent =
+
+        respiratoryRate.toFixed(1);
+}
+
+
+// ====================================
+// TEMPERATURE GRAPH
+// ====================================
+
+function drawTemperatureGraph() {
+
+    drawGraph(
+
+        temperatureCtx,
+
+        temperatureCanvas,
+
+        smoothedTemperatures,
+
+        "temperature",
+
+        "Temperature (°C)"
+    );
+}
+
+
+// ====================================
+// CO2 GRAPH
+// ====================================
+
+function drawCO2Graph() {
+
+    drawGraph(
+
+        co2Ctx,
+
+        co2Canvas,
+
+        measurements,
+
+        "co2",
+
+        "CO₂ (%)"
+    );
+}
+
+
+// ====================================
+// GENERIC GRAPH
+// ====================================
+
+function drawGraph(
+    ctx,
+    canvas,
+    data,
+    key,
+    label
+) {
 
     ctx.clearRect(
         0,
@@ -114,79 +798,104 @@ function drawGraph() {
         canvas.height
     );
 
-    if (measurements.length < 2) {
+
+    if (data.length < 2) {
+
         return;
     }
 
-    const marginLeft = 60;
-    const marginRight = 20;
-    const marginTop = 20;
-    const marginBottom = 50;
+
+    const left = 70;
+    const right = 20;
+    const top = 30;
+    const bottom = 50;
+
 
     const graphWidth =
         canvas.width -
-        marginLeft -
-        marginRight;
+        left -
+        right;
+
 
     const graphHeight =
         canvas.height -
-        marginTop -
-        marginBottom;
+        top -
+        bottom;
 
 
-    const temperatures =
-        measurements.map(
-            m => m.temperature
+    const values =
+        data.map(
+            point =>
+                point[key]
         );
 
 
-    let minTemp =
-        Math.min(...temperatures);
+    let min =
+        Math.min(...values);
 
-    let maxTemp =
-        Math.max(...temperatures);
+    let max =
+        Math.max(...values);
 
 
-    if (maxTemp - minTemp < 0.5) {
+    if (max === min) {
 
-        minTemp -= 0.25;
-        maxTemp += 0.25;
+        min -= 0.1;
+
+        max += 0.1;
     }
 
 
-    const maxTime =
-        measurements[
-            measurements.length - 1
+    const firstTime =
+        data[0].time;
+
+
+    const lastTime =
+        data[
+            data.length - 1
         ].time;
 
 
+    const timeRange =
+        Math.max(
+            lastTime -
+            firstTime,
+            1
+        );
+
+
     // Axes
+
     ctx.beginPath();
 
     ctx.moveTo(
-        marginLeft,
-        marginTop
+        left,
+        top
     );
 
     ctx.lineTo(
-        marginLeft,
-        canvas.height - marginBottom
+        left,
+        canvas.height -
+        bottom
     );
 
     ctx.lineTo(
-        canvas.width - marginRight,
-        canvas.height - marginBottom
+        canvas.width -
+        right,
+        canvas.height -
+        bottom
     );
 
     ctx.stroke();
 
 
     // Labels
+
     ctx.fillText(
-        "Temperature (°C)",
+        label,
         5,
-        15
+        20
     );
+
 
     ctx.fillText(
         "Time (s)",
@@ -194,59 +903,90 @@ function drawGraph() {
         canvas.height - 10
     );
 
-    ctx.fillText(
-        maxTemp.toFixed(2),
-        10,
-        marginTop + 5
-    );
 
     ctx.fillText(
-        minTemp.toFixed(2),
+        max.toFixed(2),
         10,
-        canvas.height - marginBottom
+        top
     );
 
 
-    // Temperature curve
+    ctx.fillText(
+        min.toFixed(2),
+        10,
+        canvas.height -
+        bottom
+    );
+
+
+    // Curve
+
     ctx.beginPath();
 
 
-    measurements.forEach(
-        (measurement, index) => {
+    data.forEach(
+        (point, index) => {
+
 
             const x =
-                marginLeft +
+
+                left +
+
                 (
-                    measurement.time /
-                    Math.max(maxTime, 1)
-                ) *
+                    (
+                        point.time -
+                        firstTime
+                    )
+
+                    /
+
+                    timeRange
+                )
+
+                *
+
                 graphWidth;
 
 
             const y =
-                marginTop +
+
+                top +
+
                 (
                     (
-                        maxTemp -
-                        measurement.temperature
-                    ) /
-                    (
-                        maxTemp -
-                        minTemp
+                        max -
+                        point[key]
                     )
-                ) *
+
+                    /
+
+                    (
+                        max -
+                        min
+                    )
+                )
+
+                *
+
                 graphHeight;
 
 
             if (index === 0) {
 
-                ctx.moveTo(x, y);
+                ctx.moveTo(
+                    x,
+                    y
+                );
 
-            } else {
-
-                ctx.lineTo(x, y);
             }
 
+            else {
+
+                ctx.lineTo(
+                    x,
+                    y
+                );
+            }
         }
     );
 
@@ -254,182 +994,7 @@ function drawGraph() {
     ctx.stroke();
 }
 
-
-// -------------------------
-// CONNECT TO ESP32
-// -------------------------
-
-connectButton.addEventListener(
-    "click",
-    async () => {
-
-        try {
-
-            const port =
-                await navigator.serial.requestPort();
-
-
-            await port.open({
-                baudRate: 115200
-            });
-
-
-            await port.setSignals({
-                dataTerminalReady: false,
-                requestToSend: false
-            });
-
-
-            statusDisplay.textContent =
-                "ESP32 connected";
-
-
-            const reader =
-                port.readable.getReader();
-
-
-            const decoder =
-                new TextDecoder();
-
-
-            let buffer = "";
-
-
-            while (true) {
-
-                const { value, done } =
-                    await reader.read();
-
-
-                if (done) {
-                    break;
-                }
-
-
-                const text =
-                    decoder.decode(
-                        value,
-                        {
-                            stream: true
-                        }
-                    );
-
-
-                buffer += text;
-
-
-                const lines =
-                    buffer.split(/\r?\n/);
-
-
-                buffer =
-                    lines.pop();
-
-
-                for (const line of lines) {
-
-
-                    // ESP32 sends:
-                    // CO2 (%): -1.071 | Temperatur (C): 22.41
-
-                    const match =
-                        line.match(
-                            /Temperatur\s*\(C\):\s*(-?\d+(?:\.\d+)?)/
-                        );
-
-
-                    if (match) {
-
-                        const temp =
-                            parseFloat(
-                                match[1]
-                            );
-
-
-                        // Show current temperature
-                        temperatureDisplay.textContent =
-                            temp.toFixed(2);
-
-
-                        // Start time
-                        if (startTime === null) {
-
-                            startTime =
-                                Date.now();
-                        }
-
-
-                        // Calculate elapsed time
-                        const elapsedTime =
-                            (
-                                Date.now() -
-                                startTime
-                            ) / 1000;
-
-
-                        // Save measurement
-                        measurements.push({
-
-                            time:
-                                elapsedTime,
-
-                            temperature:
-                                temp
-
-                        });
-
-
-                        // Maximum 300 points
-                        if (
-                            measurements.length >
-                            300
-                        ) {
-
-                            measurements.shift();
-                        }
-
-
-                        // Update graph
-                        drawGraph();
-
-
-                        console.log(
-                            "Time:",
-                            elapsedTime.toFixed(1),
-                            "Temperature:",
-                            temp
-                        );
-                    }
-                }
-            }
-
-
-        } catch (error) {
-
-            statusDisplay.textContent =
-                "Connection failed: " +
-                error.message;
-
-            console.error(error);
-        }
-
-    }
-);
-
 </script>
 
 </body>
-
-</html>]
-Klistra in koden nedan
-Spara med Ctrl + S
-Högerklicka på index.html → Open with Live Server
-Sidan öppnas i Chrome/Edge
-Klicka Connect ESP32 → välj COM-porten
-4. Open the web interface using Google Chrome or Microsoft Edge.
-5. Click **Connect ESP32**.
-6. Select the ESP32 USB serial port.
-7. Temperature measurements will be displayed and plotted over time.
-
-The temperature signal can later be used to identify breathing
-cycles and calculate respiratory frequency.
+</html>
