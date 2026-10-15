@@ -104,9 +104,7 @@ Source code for Arduino under "VO2Max" - Arduino board settings to use for TTGO 
 ## Useful Images????
 
 <figure>
-    <img src="/images/<img width="5712" height="4284" alt="TP2_VO2Max" src="https://github.com/user-attachments/assets/c1d7c56f-6c66-45cb-886a-d3bdaafb0163" />
-" height="4284" alt="TP2_VO2Max" src="https://github.com/user-attachments/assets/498d5ea0-d83a-4e0b-bd30-40d8896ac994" />
-" width="640" height="480"
+    <img src="/images/arduino v1.1/Components.jpg" width="640" height="480"
          alt="Build parts">
     <figcaption>Hardware components, from the 3D printed case. </figcaption>
 </figure><br><br>
