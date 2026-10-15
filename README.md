@@ -1,4 +1,4 @@
-# VO2 Max Mask 
+<img width="5712" height="4284" alt="TP2_VO2Max" src="https://github.com/user-attachments/assets/cc819019-ca08-4925-b404-0099be4e6d09" /># VO2 Max Mask 
 This project aims to rebuild and test an affordable and adaptable VO₂max mask. VO₂max measures the maximum amount of oxygen the body can absorb and use during exercise.
 
 The project is based on the previous [VO₂max Mask project](https://github.com/Elin310/VO2max), which incorporates CO₂ measurement and other sensor improvements.
@@ -104,7 +104,8 @@ Source code for Arduino under "VO2Max" - Arduino board settings to use for TTGO 
 ## Useful Images????
 
 <figure>
-    <img src="/images/arduino v1.1/Components.jpg" width="640" height="480"
+    <img src="/images/<img width="5712" height="4284" alt="TP2_VO2Max" src="https://github.com/user-attachments/assets/498d5ea0-d83a-4e0b-bd30-40d8896ac994" />
+" width="640" height="480"
          alt="Build parts">
     <figcaption>Hardware components, from the 3D printed case. </figcaption>
 </figure><br><br>
