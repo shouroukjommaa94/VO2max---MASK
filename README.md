@@ -1,4 +1,4 @@
-<img width="5712" height="4284" alt="TP2_VO2Max" src="https://github.com/user-attachments/assets/cc819019-ca08-4925-b404-0099be4e6d09" /># VO2 Max Mask 
+# VO2 Max Mask 
 This project aims to rebuild and test an affordable and adaptable VO₂max mask. VO₂max measures the maximum amount of oxygen the body can absorb and use during exercise.
 
 The project is based on the previous [VO₂max Mask project](https://github.com/Elin310/VO2max), which incorporates CO₂ measurement and other sensor improvements.
@@ -73,7 +73,7 @@ The interface also estimates respiratory rate from temperature variations.
 ## Order Sensors, board, and assorted fasteners.
 Check the [BOM](https://github.com/Elin310/VO2max/blob/main/BOM.md) for all the various parts to order, they can take a week or two to come in.
 
-## Print 3D Parts?????
+## Print 3D Parts
 Print out the 3D parts using PLA.
 
 The 3D parts used is under the map 3D print files under arduino v1.1 map. The buttons are not a real match to the case and the on/off switch for the battery was the wrong one and need to be adjusted.
@@ -104,7 +104,8 @@ Source code for Arduino under "VO2Max" - Arduino board settings to use for TTGO 
 ## Useful Images????
 
 <figure>
-    <img src="/images/<img width="5712" height="4284" alt="TP2_VO2Max" src="https://github.com/user-attachments/assets/498d5ea0-d83a-4e0b-bd30-40d8896ac994" />
+    <img src="/images/<img width="5712" height="4284" alt="TP2_VO2Max" src="https://github.com/user-attachments/assets/c1d7c56f-6c66-45cb-886a-d3bdaafb0163" />
+" height="4284" alt="TP2_VO2Max" src="https://github.com/user-attachments/assets/498d5ea0-d83a-4e0b-bd30-40d8896ac994" />
 " width="640" height="480"
          alt="Build parts">
     <figcaption>Hardware components, from the 3D printed case. </figcaption>
