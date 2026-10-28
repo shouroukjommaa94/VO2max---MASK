@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>VO2 Mask Bluetooth - EWMA</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 30px auto;
+            padding: 20px;
+        }
+
+        button {
+            padding: 12px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        .value {
+            font-weight: bold;
+        }
+
+        canvas {
+            display: block;
+            box-sizing: border-box;
+            border: 1px solid black;
+            width: 100%;
+            max-width: 900px;
+            margin-top: 20px;
+        }
+
+        .legend {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+        .legend span {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .legend-line {
+            display: inline-block;
+            width: 24px;
+            height: 3px;
+        }
+
+        .raw-line {
+            background: #1677ff;
+        }
+
+        .ewma-line {
+            background: #e53935;
+        }
+
+        .settings {
+            margin: 20px 0;
+            padding: 12px;
+            background: #f5f5f5;
+            border-radius: 6px;
+        }
+
+        .settings label {
+            display: block;
+            margin: 10px 0;
+        }
+
+        .settings input {
+            width: 90px;
+            margin-left: 8px;
+        }
+
+        /* CO2-protokoll */
+        .co2-protocol {
+            margin: 20px 0;
+            padding: 16px;
+            background: #f5f5f5;
+            border-radius: 6px;
+        }
+
+        .co2-protocol p {
+            margin: 12px 0;
+        }
+
+        .co2-protocol button {
+            margin: 5px 5px 5px 0;
+        }
+
+        .protocol-status {
+            font-weight: bold;
+        }
+
+        .protocol-result {
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>VO2 Mask</h1>
+
+<button id="connectButton">Connect Bluetooth</button>
+
+<p>Status: <span id="status" class="value">Not connected</span></p>
+
+<h2>Sensor values</h2>
+
+<p>Temperature: <span id="temperature" class="value">--</span> °C</p>
+<p>EWMA temperature: <span id="filteredTemperature" class="value">--</span> °C</p>
+<p>CO₂: <span id="co2" class="value">--</span> %</p>
+
+<!-- CO2-protokoll -->
+<h2>CO₂-protokoll och metabolisk belastning</h2>
+
+<div class="co2-protocol">
+
+    <p>
+        <strong>Instruktion:</strong>
+        Starta protokollet när Bluetooth är anslutet.
+        Först mäts rumsluften i 60 sekunder, därefter normal
+        andning i 60 sekunder. Under träningen visas aktuell
+        CO₂, medelvärdet vid normal andning och metabolisk
+        belastning i procent.
+    </p>
+
+    <button id="startProtocolButton">Starta protokoll</button>
+    <button id="resetProtocolButton">Återställ protokoll</button>
+
+    <p>
+        Protokollstatus:
+        <span id="protocolStatus" class="protocol-status">
+            Väntar på start
+        </span>
+    </p>
+
+    <p>
+        Tid kvar i aktuell fas:
+        <span id="phaseTimeRemaining" class="value">--</span>
+        sekunder
+    </p>
+
+    <p>
+        Antal CO₂-mätningar i aktuell fas:
+        <span id="phaseSampleCount" class="value">0</span>
+    </p>
+
+    <hr>
+
+    <h3>Resultat</h3>
+
+    <p>
+        Nuvarande CO₂-värde:
+        <span id="currentLoadCo2" class="value">--</span>
+    </p>
+
+    <p>
+        Medelvärde CO₂ vid normal andning:
+        <span id="normalCo2Average" class="value">--</span>
+    </p>
+
+    <p>
+        Metabolisk belastning:
+        <span id="relativeCo2Load" class="protocol-result">--</span>
+    </p>
+
+</div>
+
+<h2>Breathing analysis</h2>
+
+<p>Peaks: <span id="peakCount" class="value">0</span></p>
+<p>Valleys: <span id="valleyCount" class="value">0</span></p>
+<p>Respiratory frequency: <span id="respiratoryRate" class="value">--</span> breaths/min</p>
+
+<div class="settings">
+    <h3>EWMA and peak settings</h3>
+
+    <label>
+        EWMA alpha (0–1):
+        <input id="alphaInput" type="number" min="0.01" max="1" step="0.05" value="0.20">
+    </label>
+
+    <label>
+        Minimum temperature amplitude (°C):
+        <input id="minChangeInput" type="number" min="0" step="0.01" value="0.03">
+    </label>
+
+    <label>
+        Minimum time between peaks (s):
+        <input id="minIntervalInput" type="number" min="0" step="0.1" value="1.2">
+    </label>
+</div>
+
+<h2>Temperature over time</h2>
+
+<div class="legend">
+    <span><i class="legend-line raw-line"></i> Raw temperature T(n)</span>
+    <span><i class="legend-line ewma-line"></i> EWMA temperature F(n)</span>
+</div>
+
+<canvas id="temperatureGraph" width="900" height="400"></canvas>
+
+<h2>CO₂ over time</h2>
+
+<canvas id="co2Graph" width="900" height="400"></canvas>
+
+<script>
+
+const SERVICE_UUID =
+    "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+
+const CHARACTERISTIC_UUID =
+    "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+
+const connectButton = document.getElementById("connectButton");
+const statusDisplay = document.getElementById("status");
+const temperatureDisplay = document.getElementById("temperature");
+const filteredTemperatureDisplay = document.getElementById("filteredTemperature");
+const co2Display = document.getElementById("co2");
+const peakCountDisplay = document.getElementById("peakCount");
+const valleyCountDisplay = document.getElementById("valleyCount");
+const respiratoryRateDisplay = document.getElementById("respiratoryRate");
+
+const alphaInput = document.getElementById("alphaInput");
+const minChangeInput = document.getElementById("minChangeInput");
+const minIntervalInput = document.getElementById("minIntervalInput");
+
+const temperatureCanvas = document.getElementById("temperatureGraph");
+const temperatureCtx = temperatureCanvas.getContext("2d");
+
+const co2Canvas = document.getElementById("co2Graph");
+const co2Ctx = co2Canvas.getContext("2d");
+
+let measurements = [];
+let smoothedTemperatures = [];
+let detectedPeaks = [];
+let detectedValleys = [];
+
+let startTime = null;
+let bluetoothBuffer = "";
+
+const MAX_SAMPLES = 500;
+const AMPLITUDE_WINDOW_SECONDS = 5;
+
+function getAlpha() {
+    const value = Number(alphaInput.value);
+    return Number.isFinite(value)
+        ? Math.max(0.01, Math.min(1, value))
+        : 0.20;
+}
+
+function getMinTempChange() {
+    const value = Number(minChangeInput.value);
+    return Number.isFinite(value) ? Math.max(0, value) : 0.03;
+}
+
+function getMinPeakInterval() {
+    const value = Number(minIntervalInput.value);
+    return Number.isFinite(value) ? Math.max(0, value) : 1.2;
+}
+
+connectButton.addEventListener("click", async () => {
+    try {
+        if (!navigator.bluetooth) {
+            statusDisplay.textContent = "Web Bluetooth not supported";
+            return;
+        }
+
+        statusDisplay.textContent = "Searching...";
+
+        const device = await navigator.bluetooth.requestDevice({
+            acceptAllDevices: true,
+            optionalServices: [SERVICE_UUID]
+        });
+
+        statusDisplay.textContent = "Connecting...";
+
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService(SERVICE_UUID);
+        const characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+
+        characteristic.addEventListener(
+            "characteristicvaluechanged",
+            receiveBluetoothData
+        );
+
+        await characteristic.startNotifications();
+
+        statusDisplay.textContent = "Bluetooth connected";
+
+        device.addEventListener("gattserverdisconnected", () => {
+            statusDisplay.textContent = "Bluetooth disconnected";
+        });
+
+    } catch (error) {
+        statusDisplay.textContent = "Connection failed: " + error.message;
+        console.error(error);
+    }
+});
+
+function receiveBluetoothData(event) {
+    const decoder = new TextDecoder();
+    bluetoothBuffer += decoder.decode(event.target.value);
+
+    const lines = bluetoothBuffer.split("\n");
+    bluetoothBuffer = lines.pop();
+
+    for (const line of lines) {
+        processSensorData(line.trim());
+    }
+}
+
+function processSensorData(line) {
+    if (!line) return;
+
+    const values = line.split(",");
+    if (values.length < 2) return;
+
+    const temperature = Number(values[0]);
+    const co2 = Number(values[1]);
+
+    if (!Number.isFinite(temperature) || !Number.isFinite(co2)) {
+        return;
+    }
+
+    if (startTime === null) {
+        startTime = performance.now();
+    }
+
+    const elapsedTime = (performance.now() - startTime) / 1000;
+
+    temperatureDisplay.textContent = temperature.toFixed(2);
+    co2Display.textContent = co2.toFixed(3);
+
+    measurements.push({
+        time: elapsedTime,
+        temperature: temperature,
+        co2: co2
+    });
+
+    let filteredTemperature;
+
+    if (smoothedTemperatures.length === 0) {
+        filteredTemperature = temperature;
+    } else {
+        const previousFiltered =
+            smoothedTemperatures[smoothedTemperatures.length - 1].temperature;
+
+        const alpha = getAlpha();
+
+        filteredTemperature =
+            alpha * temperature +
+            (1 - alpha) * previousFiltered;
+    }
+
+    smoothedTemperatures.push({
+        time: elapsedTime,
+        temperature: filteredTemperature
+    });
+
+    filteredTemperatureDisplay.textContent =
+        filteredTemperature.toFixed(2);
+
+    if (measurements.length > MAX_SAMPLES) {
+        measurements.shift();
+        smoothedTemperatures.shift();
+    }
+
+    detectBreathing();
+    drawTemperatureGraph();
+    drawCO2Graph();
+
+    // Samla CO2-värden för protokollet
+    processProtocolCO2(co2);
+}
+
+function detectBreathing() {
+    const n = smoothedTemperatures.length;
+
+    // Tre punkter behövs för att identifiera ett lokalt maximum
+    if (n < 3) {
+        return;
+    }
+
+    const previous = smoothedTemperatures[n - 3];
+    const middle = smoothedTemperatures[n - 2];
+    const current = smoothedTemperatures[n - 1];
+
+    const t1 = previous.temperature;
+    const t2 = middle.temperature;
+    const t3 = current.temperature;
+
+    // Lokalt maximum i EWMA-filtrerad temperatur
+    const isPeak =
+        t2 > t1 &&
+        t2 >= t3;
+
+    if (isPeak) {
+        const recent = smoothedTemperatures.filter(point =>
+            point.time >= middle.time - 5 &&
+            point.time <= middle.time
+        );
+
+        const recentMin = Math.min(
+            ...recent.map(point => point.temperature)
+        );
+
+        const amplitude = t2 - recentMin;
+
+        const lastPeakTime =
+            detectedPeaks.length > 0
+                ? detectedPeaks[detectedPeaks.length - 1].time
+                : -Infinity;
+
+        const interval = middle.time - lastPeakTime;
+
+        if (
+            amplitude >= getMinTempChange() &&
+            interval >= getMinPeakInterval()
+        ) {
+            detectedPeaks.push({
+                time: middle.time,
+                temperature: middle.temperature
+            });
+
+            peakCountDisplay.textContent =
+                detectedPeaks.length;
+
+            calculateRespiratoryRate();
+
+            console.log(
+                "Peak detected:",
+                middle.time.toFixed(2),
+                "s",
+                "Temperature:",
+                middle.temperature.toFixed(3)
+            );
+        }
+    }
+
+    // Lokalt minimum i EWMA-filtrerad temperatur
+    const isValley =
+        t2 < t1 &&
+        t2 <= t3;
+
+    if (isValley) {
+        const recent = smoothedTemperatures.filter(point =>
+            point.time >= middle.time - 5 &&
+            point.time <= middle.time
+        );
+
+        const recentMax = Math.max(
+            ...recent.map(point => point.temperature)
+        );
+
+        const amplitude = recentMax - t2;
+
+        const lastValleyTime =
+            detectedValleys.length > 0
+                ? detectedValleys[detectedValleys.length - 1].time
+                : -Infinity;
+
+        if (
+            amplitude >= getMinTempChange() &&
+            middle.time - lastValleyTime >= getMinPeakInterval()
+        ) {
+            detectedValleys.push({
+                time: middle.time,
+                temperature: middle.temperature
+            });
+
+            valleyCountDisplay.textContent =
+                detectedValleys.length;
+        }
+    }
+}
+
+function calculateRespiratoryRate() {
+    if (detectedPeaks.length < 2) {
+        respiratoryRateDisplay.textContent = "--";
+        return;
+    }
+
+    const recentPeaks = detectedPeaks.slice(-6);
+    let totalInterval = 0;
+
+    for (let i = 1; i < recentPeaks.length; i++) {
+        totalInterval +=
+            recentPeaks[i].time - recentPeaks[i - 1].time;
+    }
+
+    const averageInterval = totalInterval / (recentPeaks.length - 1);
+
+    if (averageInterval <= 0) {
+        respiratoryRateDisplay.textContent = "--";
+        return;
+    }
+
+    respiratoryRateDisplay.textContent =
+        (60 / averageInterval).toFixed(1);
+}
+
+function drawTemperatureGraph() {
+    const ctx = temperatureCtx;
+    const canvas = temperatureCanvas;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (measurements.length < 2) return;
+
+    const left = 75;
+    const right = 20;
+    const top = 30;
+    const bottom = 50;
+
+    const graphWidth = canvas.width - left - right;
+    const graphHeight = canvas.height - top - bottom;
+
+    const allValues = [
+        ...measurements.map(p => p.temperature),
+        ...smoothedTemperatures.map(p => p.temperature)
+    ];
+
+    let min = Math.min(...allValues);
+    let max = Math.max(...allValues);
+
+    if (max === min) {
+        min -= 0.1;
+        max += 0.1;
+    } else {
+        const padding = (max - min) * 0.08;
+        min -= padding;
+        max += padding;
+    }
+
+    const firstTime = measurements[0].time;
+    const lastTime = measurements[measurements.length - 1].time;
+    const timeRange = Math.max(lastTime - firstTime, 1);
+
+    function xPosition(time) {
+        return left + ((time - firstTime) / timeRange) * graphWidth;
+    }
+
+    function yPosition(value) {
+        return top + ((max - value) / (max - min)) * graphHeight;
+    }
+
+    ctx.strokeStyle = "#444";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(left, top);
+    ctx.lineTo(left, canvas.height - bottom);
+    ctx.lineTo(canvas.width - right, canvas.height - bottom);
+    ctx.stroke();
+
+    ctx.fillStyle = "#222";
+    ctx.font = "12px Arial";
+
+    ctx.fillText("Temperature (°C)", 5, 18);
+    ctx.fillText("Time (s)", canvas.width / 2 - 20, canvas.height - 10);
+    ctx.fillText(max.toFixed(2), 8, top + 4);
+    ctx.fillText(min.toFixed(2), 8, canvas.height - bottom);
+
+    drawTemperatureLine(
+        ctx, measurements, xPosition, yPosition, "#1677ff", 1.5
+    );
+
+    drawTemperatureLine(
+        ctx, smoothedTemperatures, xPosition, yPosition, "#e53935", 2.5
+    );
+
+    ctx.fillStyle = "#111";
+
+    for (const peak of detectedPeaks) {
+        if (peak.time < firstTime || peak.time > lastTime) continue;
+
+        ctx.beginPath();
+        ctx.arc(
+            xPosition(peak.time),
+            yPosition(peak.temperature),
+            4,
+            0,
+            2 * Math.PI
+        );
+        ctx.fill();
+    }
+}
+
+function drawTemperatureLine(
+    ctx, data, xPosition, yPosition, color, lineWidth
+) {
+    if (data.length < 2) return;
+
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+
+    data.forEach((point, index) => {
+        const x = xPosition(point.time);
+        const y = yPosition(point.temperature);
+
+        if (index === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+    });
+
+    ctx.stroke();
+}
+
+function drawCO2Graph() {
+    drawGenericGraph(
+        co2Ctx,
+        co2Canvas,
+        measurements,
+        "co2",
+        "CO₂ (%)",
+        "#228833"
+    );
+}
+
+function drawGenericGraph(ctx, canvas, data, key, label, color) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (data.length < 2) return;
+
+    const left = 70;
+    const right = 20;
+    const top = 30;
+    const bottom = 50;
+
+    const graphWidth = canvas.width - left - right;
+    const graphHeight = canvas.height - top - bottom;
+
+    const values = data.map(point => point[key]);
+
+    let min = Math.min(...values);
+    let max = Math.max(...values);
+
+    if (max === min) {
+        min -= 0.1;
+        max += 0.1;
+    }
+
+    const firstTime = data[0].time;
+    const lastTime = data[data.length - 1].time;
+    const timeRange = Math.max(lastTime - firstTime, 1);
+
+    function xPosition(time) {
+        return left + ((time - firstTime) / timeRange) * graphWidth;
+    }
+
+    function yPosition(value) {
+        return top + ((max - value) / (max - min)) * graphHeight;
+    }
+
+    ctx.strokeStyle = "#444";
+    ctx.lineWidth = 1;
+
+    ctx.beginPath();
+    ctx.moveTo(left, top);
+    ctx.lineTo(left, canvas.height - bottom);
+    ctx.lineTo(canvas.width - right, canvas.height - bottom);
+    ctx.stroke();
+
+    ctx.fillStyle = "#222";
+    ctx.font = "12px Arial";
+
+    ctx.fillText(label, 5, 18);
+    ctx.fillText("Time (s)", canvas.width / 2, canvas.height - 10);
+    ctx.fillText(max.toFixed(3), 5, top + 4);
+    ctx.fillText(min.toFixed(3), 5, canvas.height - bottom);
+
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+
+    data.forEach((point, index) => {
+        const x = xPosition(point.time);
+        const y = yPosition(point[key]);
+
+        if (index === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+    });
+
+    ctx.stroke();
+}
+
+
+// =====================================================
+// CO2-PROTOKOLL
+// Rumsluft 60 s -> normal andning 60 s -> träning
+// =====================================================
+
+const startProtocolButton =
+    document.getElementById("startProtocolButton");
+
+const resetProtocolButton =
+    document.getElementById("resetProtocolButton");
+
+const protocolStatusDisplay =
+    document.getElementById("protocolStatus");
+
+const phaseTimeRemainingDisplay =
+    document.getElementById("phaseTimeRemaining");
+
+const phaseSampleCountDisplay =
+    document.getElementById("phaseSampleCount");
+
+const normalCo2AverageDisplay =
+    document.getElementById("normalCo2Average");
+
+const currentLoadCo2Display =
+    document.getElementById("currentLoadCo2");
+
+const relativeCo2LoadDisplay =
+    document.getElementById("relativeCo2Load");
+
+const PROTOCOL_PHASE_DURATION_MS = 60 * 1000;
+
+let protocolPhase = "idle";
+let protocolPhaseStartTime = null;
+let protocolTimer = null;
+
+let roomCo2Values = [];
+let normalBreathingCo2Values = [];
+
+let roomCo2Average = null;
+let normalCo2Average = null;
+
+function startProtocol() {
+    if (protocolPhase !== "idle" &&
+        protocolPhase !== "finished") {
+        return;
+    }
+
+    if (startTime === null) {
+        protocolStatusDisplay.textContent =
+            "Anslut Bluetooth och vänta på sensordata först.";
+        return;
+    }
+
+    clearInterval(protocolTimer);
+
+    roomCo2Values = [];
+    normalBreathingCo2Values = [];
+
+    roomCo2Average = null;
+    normalCo2Average = null;
+
+    normalCo2AverageDisplay.textContent = "--";
+    currentLoadCo2Display.textContent = "--";
+    relativeCo2LoadDisplay.textContent = "--";
+
+    startProtocolButton.disabled = true;
+
+    beginProtocolPhase("room");
+}
+
+function beginProtocolPhase(phase) {
+    protocolPhase = phase;
+    protocolPhaseStartTime = performance.now();
+
+    if (phase === "room") {
+        protocolStatusDisplay.textContent =
+            "Steg 1/3: Mäter rumsluft i 60 sekunder. Andas inte genom masken.";
+
+    } else if (phase === "normal") {
+        protocolStatusDisplay.textContent =
+            "Steg 2/3: Andas normalt genom masken i 60 sekunder.";
+
+    } else if (phase === "exercise") {
+        protocolStatusDisplay.textContent =
+            "Steg 3/3: Träning pågår. Metabolisk belastning uppdateras live.";
+
+        phaseTimeRemainingDisplay.textContent = "—";
+        phaseSampleCountDisplay.textContent = "—";
+
+        startProtocolButton.disabled = false;
+        startProtocolButton.textContent = "Starta nytt protokoll";
+
+        return;
+    }
+
+    updateProtocolTimer();
+    protocolTimer = setInterval(updateProtocolTimer, 200);
+}
+
+function updateProtocolTimer() {
+    if (protocolPhase !== "room" &&
+        protocolPhase !== "normal") {
+        return;
+    }
+
+    const elapsed =
+        performance.now() - protocolPhaseStartTime;
+
+    const remaining = Math.max(
+        0,
+        Math.ceil((PROTOCOL_PHASE_DURATION_MS - elapsed) / 1000)
+    );
+
+    phaseTimeRemainingDisplay.textContent = remaining;
+
+    const activeValues =
+        protocolPhase === "room"
+            ? roomCo2Values
+            : normalBreathingCo2Values;
+
+    phaseSampleCountDisplay.textContent = activeValues.length;
+
+    if (elapsed < PROTOCOL_PHASE_DURATION_MS) {
+        return;
+    }
+
+    clearInterval(protocolTimer);
+    protocolTimer = null;
+
+    if (protocolPhase === "room") {
+        if (roomCo2Values.length === 0) {
+            protocolStatusDisplay.textContent =
+                "Inga CO₂-värden registrerades. Protokollet avbröts.";
+
+            protocolPhase = "idle";
+            startProtocolButton.disabled = false;
+            return;
+        }
+
+        roomCo2Average = calculateAverage(roomCo2Values);
+
+        // Rumsluftens medelvärde sparas internt.
+        // Det visas inte bland de tre resultaten.
+
+        beginProtocolPhase("normal");
+
+    } else if (protocolPhase === "normal") {
+        if (normalBreathingCo2Values.length === 0) {
+            protocolStatusDisplay.textContent =
+                "Inga CO₂-värden registrerades. Protokollet avbröts.";
+
+            protocolPhase = "idle";
+            startProtocolButton.disabled = false;
+            return;
+        }
+
+        normalCo2Average =
+            calculateAverage(normalBreathingCo2Values);
+
+        normalCo2AverageDisplay.textContent =
+            normalCo2Average.toFixed(3);
+
+        if (normalCo2Average === 0) {
+            protocolStatusDisplay.textContent =
+                "Medelvärdet vid normal andning är 0. Belastningen kan inte beräknas.";
+
+            protocolPhase = "idle";
+            startProtocolButton.disabled = false;
+            return;
+        }
+
+        beginProtocolPhase("exercise");
+    }
+}
+
+function processProtocolCO2(co2) {
+    if (!Number.isFinite(co2)) {
+        return;
+    }
+
+    if (protocolPhase === "room") {
+        roomCo2Values.push(co2);
+
+    } else if (protocolPhase === "normal") {
+        normalBreathingCo2Values.push(co2);
+
+    } else if (protocolPhase === "exercise") {
+        // Aktuellt CO2-värde visas utan procenttecken.
+        currentLoadCo2Display.textContent = co2.toFixed(3);
+
+        if (normalCo2Average !== null &&
+            normalCo2Average > 0) {
+
+            const metabolicLoad =
+                (co2 / normalCo2Average) * 100;
+
+            // Endast metabolisk belastning anges i procent.
+            relativeCo2LoadDisplay.textContent =
+                metabolicLoad.toFixed(1) + " %";
+        }
+    }
+
+    if (protocolPhase === "room" ||
+        protocolPhase === "normal") {
+        phaseSampleCountDisplay.textContent =
+            protocolPhase === "room"
+                ? roomCo2Values.length
+                : normalBreathingCo2Values.length;
+    }
+}
+
+function calculateAverage(values) {
+    if (values.length === 0) {
+        return NaN;
+    }
+
+    const sum = values.reduce(
+        (total, value) => total + value,
+        0
+    );
+
+    return sum / values.length;
+}
+
+function resetProtocol() {
+    clearInterval(protocolTimer);
+    protocolTimer = null;
+
+    protocolPhase = "idle";
+    protocolPhaseStartTime = null;
+
+    roomCo2Values = [];
+    normalBreathingCo2Values = [];
+
+    roomCo2Average = null;
+    normalCo2Average = null;
+
+    protocolStatusDisplay.textContent = "Väntar på start";
+    phaseTimeRemainingDisplay.textContent = "--";
+    phaseSampleCountDisplay.textContent = "0";
+
+    normalCo2AverageDisplay.textContent = "--";
+    currentLoadCo2Display.textContent = "--";
+    relativeCo2LoadDisplay.textContent = "--";
+
+    startProtocolButton.disabled = false;
+    startProtocolButton.textContent = "Starta protokoll";
+}
+
+startProtocolButton.addEventListener("click", startProtocol);
+resetProtocolButton.addEventListener("click", resetProtocol);
+
+</script>
+
+</body>
+</html>
